@@ -1,0 +1,1533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Chord Progression Analyzer and Scale Visualizer</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Custom Styles -->
+    <style>
+        /* Additional styling if necessary */
+        .fretboard {
+            display: flex;
+            flex-direction: column;
+            margin: 1rem 0;
+        }
+        .string {
+            display: flex;
+        }
+        .fret {
+            width: 40px;
+            height: 40px;
+            border: 1px solid #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .note {
+            background-color: #3b82f6;
+            color: white;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            text-align: center;
+            margin: auto;
+        }
+        /* Styles for highlighted notes */
+
+        .note.target-note {
+            background-color: #f59e0b; /* Amber-500 */
+        }
+
+        .note.tension-note {
+            background-color: #10b981; /* Emerald-500 */
+        }
+
+        .note.avoid-note {
+            background-color: #ef4444; /* Red-500 */
+            font-weight: bold;
+        }
+
+       .note-popup {
+           position: absolute;
+           background-color: #fff;
+           border: 1px solid #ccc;
+           padding: 8px;
+           font-size: 0.875rem;
+           box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+           z-index: 1000;
+           border-radius: 4px;
+       }
+
+    </style>
+</head>
+<body class="bg-gray-100 p-6">
+<div class="max-w-4xl mx-auto">
+    <h1 class="text-3xl font-bold mb-6 text-center">Chord Progression Analyzer and Scale Visualizer</h1>
+    <!-- Input Form -->
+    <form id="chordForm" class="mb-6">
+        <label for="chordInput" class="block text-lg font-medium text-gray-700 mb-2">Enter Chord Progression:</label>
+        <input type="text" id="chordInput" name="chords" class="w-full p-2 border border-gray-300 rounded-md" placeholder="e.g., Cmaj7, Am7, Dm7, G7">
+        <button type="submit" class="mt-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">Analyze</button>
+    </form>
+
+    <!-- Analysis Output -->
+    <div id="analysisOutput"></div>
+</div>
+
+<!-- JavaScript Code -->
+<script>
+    // Wait for the DOM to load
+    document.addEventListener('DOMContentLoaded', () => {
+        // Handle form submission
+        const chordForm = document.getElementById('chordForm');
+        chordForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const chordInput = document.getElementById('chordInput').value;
+            const chords = chordInput.split(',').map(chord => chord.trim());
+            const analysis = analyzeChordProgression(chords);
+            displayAnalysis(analysis);
+        });
+    });
+
+    /**
+     * Comprehensive Chord Progression Analyzer
+     * Analyzes a chord progression and returns detailed harmonic information.
+     *
+     * @param {Array} chords - An array of chord strings (e.g., ['Cmaj7', 'Am7', 'D7', 'G7']).
+     * @returns {Object} An object containing key, modal interchange, chord labels, harmonic functions, secondary dominants, and modulations.
+     */
+
+// Music theory data constants
+    const MusicTheory = {
+        // Enharmonic equivalents mapping
+        enharmonicMap: {
+            'Cb': 'B',
+            'B#': 'C',
+            'Db': 'C#',
+            'C##': 'D',
+            'Eb': 'D#',
+            'D##': 'E',
+            'Fb': 'E',
+            'E#': 'F',
+            'Gb': 'F#',
+            'F##': 'G',
+            'Ab': 'G#',
+            'G##': 'A',
+            'Bb': 'A#',
+            'A##': 'B',
+            'E##': 'F#',
+            'B##': 'C#',
+        },
+
+        // Circle of Fifths for key identification
+        circleOfFifths: [
+            'C', 'G', 'D', 'A', 'E', 'B', 'F#', 'C#',
+            'Ab', 'Eb', 'Bb', 'F'
+        ],
+
+        // All possible key signatures with their diatonic chords (major and minor)
+        keys: {
+            major: {
+                'C': ['C', 'Dm', 'Em', 'F', 'G', 'Am', 'Bdim'],
+                'G': ['G', 'Am', 'Bm', 'C', 'D', 'Em', 'F#dim'],
+                'D': ['D', 'Em', 'F#m', 'G', 'A', 'Bm', 'C#dim'],
+                'A': ['A', 'Bm', 'C#m', 'D', 'E', 'F#m', 'G#dim'],
+                'E': ['E', 'F#m', 'G#m', 'A', 'B', 'C#m', 'D#dim'],
+                'B': ['B', 'C#m', 'D#m', 'E', 'F#', 'G#m', 'A#dim'],
+                'F#': ['F#', 'G#m', 'A#m', 'B', 'C#', 'D#m', 'E#dim'],
+                'C#': ['C#', 'D#m', 'E#m', 'F#', 'G#', 'A#m', 'B#dim'],
+                'F': ['F', 'Gm', 'Am', 'Bb', 'C', 'Dm', 'Edim'],
+                'Bb': ['Bb', 'Cm', 'Dm', 'Eb', 'F', 'Gm', 'Adim'],
+                'Eb': ['Eb', 'Fm', 'Gm', 'Ab', 'Bb', 'Cm', 'Ddim'],
+                'Ab': ['Ab', 'Bbm', 'Cm', 'Db', 'Eb', 'Fm', 'Gdim'],
+                'Db': ['Db', 'Ebm', 'Fm', 'Gb', 'Ab', 'Bbm', 'Cdim'],
+                'Gb': ['Gb', 'Abm', 'Bbm', 'Cb', 'Db', 'Ebm', 'Fdim'],
+                'Cb': ['Cb', 'Dbm', 'Ebm', 'Fb', 'Gb', 'Abm', 'Bbdim'],
+            },
+            minor: {
+                'Am': ['Am', 'Bdim', 'C', 'Dm', 'Em', 'F', 'G'],
+                'Em': ['Em', 'F#dim', 'G', 'Am', 'Bm', 'C', 'D'],
+                'Bm': ['Bm', 'C#dim', 'D', 'Em', 'F#m', 'G', 'A'],
+                'F#m': ['F#m', 'G#dim', 'A', 'Bm', 'C#m', 'D', 'E'],
+                'C#m': ['C#m', 'D#dim', 'E', 'F#m', 'G#m', 'A', 'B'],
+                'G#m': ['G#m', 'A#dim', 'B', 'C#m', 'D#m', 'E', 'F#'],
+                'D#m': ['D#m', 'E#dim', 'F#', 'G#m', 'A#m', 'B', 'C#'],
+                'A#m': ['A#m', 'B#dim', 'C#', 'D#m', 'E#m', 'F#', 'G#'],
+                'Dm': ['Dm', 'Edim', 'F', 'Gm', 'Am', 'Bb', 'C'],
+                'Gm': ['Gm', 'Adim', 'Bb', 'Cm', 'Dm', 'Eb', 'F'],
+                'Cm': ['Cm', 'Ddim', 'Eb', 'Fm', 'Gm', 'Ab', 'Bb'],
+                'Fm': ['Fm', 'Gdim', 'Ab', 'Bbm', 'Cm', 'Db', 'Eb'],
+                'Bbm': ['Bbm', 'Cdim', 'Db', 'Ebm', 'Fm', 'Gb', 'Ab'],
+                'Ebm': ['Ebm', 'Fdim', 'Gb', 'Abm', 'Bbm', 'Cb', 'Db'],
+                'Abm': ['Abm', 'Bbdim', 'Cb', 'Dbm', 'Ebm', 'Fb', 'Gb'],
+            }
+        },
+
+        // Roman numerals for chord labeling
+        romanNumerals: {
+            major: ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°'],
+            minor: ['i', 'ii°', 'bIII', 'iv', 'v', 'bVI', 'bVII']
+        },
+
+        // Harmonic functions
+        harmonicFunctions: {
+            major: {
+                'I': 'Tonic',
+                'ii': 'Subdominant',
+                'iii': 'Mediant',
+                'IV': 'Subdominant',
+                'V': 'Dominant',
+                'vi': 'Submediant',
+                'vii°': 'Leading Tone'
+            },
+            minor: {
+                'i': 'Tonic',
+                'ii°': 'Supertonic Diminished',
+                'bIII': 'Mediant',
+                'iv': 'Subdominant',
+                'v': 'Dominant',
+                'bVI': 'Submediant',
+                'bVII': 'Subtonic'
+            }
+        },
+
+        // Modes for modal interchange
+        modes: {
+            Ionian: [0, 2, 4, 5, 7, 9, 11],       // Major scale
+            Dorian: [0, 2, 3, 5, 7, 9, 10],
+            Phrygian: [0, 1, 3, 5, 7, 8, 10],
+            Lydian: [0, 2, 4, 6, 7, 9, 11],
+            Mixolydian: [0, 2, 4, 5, 7, 9, 10],
+            Aeolian: [0, 2, 3, 5, 7, 8, 10],      // Natural minor scale
+            Locrian: [0, 1, 3, 5, 6, 8, 10],
+        },
+
+        // Intervals for chord construction
+        intervals: {
+            'M': 4,   // Major third
+            'm': 3,   // Minor third
+            'P': 7,   // Perfect fifth
+            'd': 6,   // Diminished fifth
+            'A': 8,   // Augmented fifth
+        }
+    };
+
+    // Utility functions
+
+    /**
+     * Normalize chord names to handle enharmonic equivalents.
+     * @param {String} chord - The chord name (e.g., 'Cb', 'B#', 'E#', 'Fb').
+     * @returns {String} Normalized chord name.
+     */
+    function normalizeChordName(chord) {
+        // Extract root note and chord quality
+        const regex = /^([A-G][b#]?)(.*)/;
+        const match = chord.match(regex);
+        if (!match) return chord;
+
+        let [ , root, quality ] = match;
+
+        // Normalize enharmonic equivalents
+        if (MusicTheory.enharmonicMap[root]) {
+            root = MusicTheory.enharmonicMap[root];
+        }
+
+        return root + quality;
+    }
+
+    /**
+     * Parse chord and extract root note and quality.
+     * @param {String} chord - The chord name.
+     * @returns {Object} An object with 'root' and 'quality'.
+     */
+    /**
+     * Parse chord and extract root note and quality.
+     * @param {String} chord - The chord name.
+     * @returns {Object} An object with 'root' and 'quality'.
+     */
+    /**
+     * Parse chord and extract root note and quality.
+     * @param {String} chord - The chord name.
+     * @returns {Object} An object with 'root' and 'quality'.
+     */
+    function parseChord(chord) {
+        const regex = /^([A-G][b#]?)(.*)/i;
+        const match = chord.match(regex);
+        if (!match) return null;
+
+        let [, root, quality] = match;
+
+        // Standardize root note (capitalize)
+        root = root.charAt(0).toUpperCase() + root.slice(1);
+
+        // Standardize chord quality
+        quality = quality.toLowerCase();
+
+        // Handle chord quality aliases and extensions
+        // Replace known aliases with standardized names
+        quality = quality.replace(/maj|M/g, 'maj');
+        quality = quality.replace(/min|-/g, 'm');
+        quality = quality.replace(/dom/g, '7');
+        quality = quality.replace(/aug|\+/g, 'aug');
+        quality = quality.replace(/dim/g, 'dim');
+        quality = quality.replace(/sus2/g, 'sus2');
+        quality = quality.replace(/sus4|sus/g, 'sus4');
+        quality = quality.replace(/add(\d+)/g, 'add$1');
+        quality = quality.replace(/(\d+)\/(\d+)/g, '$1/$2'); // Handle chords like 6/9
+
+        // Handle extensions and alterations
+        quality = quality.replace(/(b|#)(\d+)/g, '$1$2');
+
+        return {
+            root: root,
+            quality: quality
+        };
+    }
+
+    /**
+     * Determine the most likely key for the given chords.
+     * @param {Array} chords - Array of chords.
+     * @returns {String} The most probable key.
+     */
+    /**
+     * Determine the most likely key for the given chords.
+     * @param {Array} chords - Array of chords.
+     * @returns {String} The most probable key.
+     */
+    /**
+     * Determine the most likely key for the given chords.
+     * @param {Array} chords - Array of chords.
+     * @returns {String} The most probable key.
+     */
+    function determineKey(chords) {
+        let keyScoresMajor = {};
+        let keyScoresMinor = {};
+
+        // Consider both major and minor keys
+        for (let scaleType in MusicTheory.keys) {
+            for (let key in MusicTheory.keys[scaleType]) {
+                let score = 0;
+                const diatonicChords = MusicTheory.keys[scaleType][key].map(chord => normalizeChordName(chord));
+
+                chords.forEach(chord => {
+                    const normalizedChord = normalizeChordName(chord);
+                    const { root: chordRoot, quality: chordQuality } = parseChord(normalizedChord);
+
+                    // Check for exact chord match including root and quality
+                    if (diatonicChords.some(dc => {
+                        const { root: dcRoot, quality: dcQuality } = parseChord(dc);
+                        return dcRoot === chordRoot && dcQuality === chordQuality;
+                    })) {
+                        score += 2; // Higher score for exact match
+                    } else if (diatonicChords.some(dc => {
+                        const { root: dcRoot } = parseChord(dc);
+                        return dcRoot === chordRoot;
+                    })) {
+                        score += 1; // Lower score for root match
+                    }
+                });
+
+                if (scaleType === 'major') {
+                    keyScoresMajor[key] = score;
+                } else {
+                    keyScoresMinor[key] = score;
+                }
+            }
+        }
+
+        // Find the best matching major key
+        let maxScoreMajor = 0;
+        let probableKeyMajor = null;
+        for (let key in keyScoresMajor) {
+            if (keyScoresMajor[key] > maxScoreMajor) {
+                maxScoreMajor = keyScoresMajor[key];
+                probableKeyMajor = key;
+            }
+        }
+
+        // Find the best matching minor key
+        let maxScoreMinor = 0;
+        let probableKeyMinor = null;
+        for (let key in keyScoresMinor) {
+            if (keyScoresMinor[key] > maxScoreMinor) {
+                maxScoreMinor = keyScoresMinor[key];
+                probableKeyMinor = key;
+            }
+        }
+
+        // Compare scores and decide between major and minor key
+        if (maxScoreMinor >= maxScoreMajor) {
+            return probableKeyMinor;
+        } else {
+            return probableKeyMajor;
+        }
+    }
+
+    /**
+     * Get target notes (1st, 3rd, 7th) for a chord.
+     * @param {String} chord - The chord name.
+     * @returns {Array} An array of target notes.
+     */
+    function getTargetNotes(chord) {
+        const { root, quality } = parseChord(chord);
+        const intervals = getChordIntervals(quality);
+        const scale = buildChromaticScale(root);
+
+        // Map intervals to note names for target notes
+        const targetIntervals = [0]; // Root is always a target note
+
+        if (intervals.includes(3)) targetIntervals.push(3); // Minor 3rd
+        if (intervals.includes(4)) targetIntervals.push(4); // Major 3rd
+        if (intervals.includes(10)) targetIntervals.push(10); // Minor 7th
+        if (intervals.includes(11)) targetIntervals.push(11); // Major 7th
+
+        const targetNotes = targetIntervals.map(interval => scale[interval % 12]);
+        return targetNotes;
+    }
+
+    /**
+     * Get available tensions for a chord within the scale.
+     * @param {String} chord - The chord name.
+     * @param {Array} scale - The scale notes.
+     * @returns {Array} An array of tension notes.
+     */
+    function getAvailableTensions(chord, scale) {
+        const { root } = parseChord(chord);
+        const chordTones = getChordTones(chord);
+        const tensions = [];
+
+        // Tensions are the 9th, 11th, and 13th degrees
+        const tensionIntervals = [2, 5, 9]; // 9th, 11th, 13th intervals in semitones
+        const chromaticScale = buildChromaticScale(root);
+
+        tensionIntervals.forEach(interval => {
+            const tensionNoteIndex = (chromaticNoteIndex(root) + interval) % 12;
+            const tensionNote = chromaticScale[tensionNoteIndex];
+
+            if (scale.includes(tensionNote) && !chordTones.includes(tensionNote)) {
+                tensions.push(tensionNote);
+            }
+        });
+
+        return tensions;
+    }
+
+    /**
+     * Get avoid notes for a chord within the scale.
+     * @param {String} chord - The chord name.
+     * @param {Array} scale - The scale notes.
+     * @returns {Array} An array of avoid notes.
+     */
+    function getAvoidNotes(chord, scale) {
+        const { root, quality } = parseChord(chord);
+        const chordTones = getChordTones(chord);
+        const avoidNotes = [];
+        const chromaticScale = buildChromaticScale(root);
+
+        if (quality.includes('maj')) {
+            // For major chords, avoid the 4th degree
+            const avoidInterval = 5; // Perfect 4th
+            const avoidNoteIndex = (chromaticNoteIndex(root) + avoidInterval) % 12;
+            const avoidNote = chromaticScale[avoidNoteIndex];
+
+            if (scale.includes(avoidNote) && !chordTones.includes(avoidNote)) {
+                avoidNotes.push(avoidNote);
+            }
+        }
+
+        if (quality.includes('7')) {
+            // For dominant chords, avoid the b9 (flat 9)
+            const avoidInterval = 1; // Minor 2nd
+            const avoidNoteIndex = (chromaticNoteIndex(root) + avoidInterval) % 12;
+            const avoidNote = chromaticScale[avoidNoteIndex];
+
+            if (scale.includes(avoidNote) && !chordTones.includes(avoidNote)) {
+                avoidNotes.push(avoidNote);
+            }
+        }
+
+        return avoidNotes;
+    }
+
+    /**
+     * Get the index of a note in the chromatic scale.
+     * @param {String} note - The note name.
+     * @returns {Number} The index of the note in the chromatic scale (0-11).
+     */
+    function chromaticNoteIndex(note) {
+        const chromaticScaleSharp = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const chromaticScaleFlat = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+
+        let index = chromaticScaleSharp.indexOf(note);
+        if (index === -1) {
+            index = chromaticScaleFlat.indexOf(note);
+        }
+        return index;
+    }
+
+
+
+    /**
+     * Label chords with Roman numerals relative to the key.
+     * @param {Array} chords - Array of chords.
+     * @param {String} key - The key of the progression.
+     * @returns {Array} Array of chord labels.
+     */
+    function labelChords(chords, key) {
+        let labels = [];
+
+        // Determine scale type (major or minor)
+        let scaleType = MusicTheory.keys.major[key] ? 'major' : 'minor';
+        const diatonicChords = MusicTheory.keys[scaleType][key].map(chord => normalizeChordName(chord));
+        const numerals = MusicTheory.romanNumerals[scaleType];
+
+        chords.forEach(chord => {
+            const normalizedChord = normalizeChordName(chord);
+            const chordRoot = parseChord(normalizedChord).root;
+
+            let index = diatonicChords.findIndex(dc => parseChord(dc).root === chordRoot);
+
+            if (index !== -1) {
+                labels.push(numerals[index]);
+            } else {
+                labels.push('Non-diatonic');
+            }
+        });
+
+        return labels;
+    }
+
+    /**
+     * Identify harmonic functions for each chord.
+     * @param {Array} labels - Array of chord labels.
+     * @param {String} key - The key of the progression.
+     * @returns {Array} Array of harmonic functions.
+     */
+    function identifyHarmonicFunctions(labels, key) {
+        let functions = [];
+
+        // Determine scale type (major or minor)
+        let scaleType = MusicTheory.keys.major[key] ? 'major' : 'minor';
+        const harmonicFuncs = MusicTheory.harmonicFunctions[scaleType];
+
+        labels.forEach(label => {
+            functions.push(harmonicFuncs[label] || 'Non-diatonic');
+        });
+
+        return functions;
+    }
+
+    /**
+     * Detect modal interchange chords in the progression.
+     * @param {Array} chords - Array of chords.
+     * @param {String} key - The key of the progression.
+     * @returns {Array} Array of modal interchange chords.
+     */
+    function detectModalInterchange(chords, key) {
+        let modalChords = [];
+
+        // Modes to consider for modal interchange
+        const modesToCheck = ['Dorian', 'Phrygian', 'Lydian', 'Mixolydian', 'Aeolian', 'Locrian'];
+
+        modesToCheck.forEach(mode => {
+            const modeIntervals = MusicTheory.modes[mode];
+            const modeScale = buildScale(key, modeIntervals);
+            const modeChords = buildChordsFromScale(modeScale);
+
+            chords.forEach(chord => {
+                const normalizedChord = normalizeChordName(chord);
+                if (modeChords.includes(normalizedChord) && !isChordInKey(chord, key)) {
+                    if (!modalChords.includes(chord)) {
+                        modalChords.push(chord);
+                    }
+                }
+            });
+        });
+
+        return modalChords;
+    }
+
+    /**
+     * Check if a chord is diatonic to the key.
+     * @param {String} chord - The chord to check.
+     * @param {String} key - The key to check against.
+     * @returns {Boolean} True if chord is diatonic, false otherwise.
+     */
+    function isChordInKey(chord, key) {
+        // Determine scale type (major or minor)
+        let scaleType = MusicTheory.keys.major[key] ? 'major' : 'minor';
+        const diatonicChords = MusicTheory.keys[scaleType][key].map(chord => normalizeChordName(chord));
+        const chordRoot = parseChord(normalizeChordName(chord)).root;
+        return diatonicChords.some(dc => parseChord(dc).root === chordRoot);
+    }
+
+    /**
+     * Build a scale based on intervals.
+     * @param {String} key - The root note of the scale.
+     * @param {Array} intervals - Array of semitone intervals.
+     * @returns {Array} Array of notes in the scale.
+     */
+    function buildScale(key, intervals) {
+        const chromaticScaleSharp = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const chromaticScaleFlat = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+
+        // Choose chromatic scale based on key signature
+        const useFlat = ['F', 'Bb', 'Eb', 'Ab', 'Db', 'Gb', 'Cb'];
+        const chromaticScale = useFlat.includes(key) ? chromaticScaleFlat : chromaticScaleSharp;
+
+        const startIndex = chromaticScale.indexOf(key);
+        if (startIndex === -1) return [];
+
+        let scale = [];
+        intervals.forEach(interval => {
+            let noteIndex = (startIndex + interval) % 12;
+            scale.push(chromaticScale[noteIndex]);
+        });
+
+        return scale;
+    }
+
+    /**
+     * Build chords from a scale.
+     * @param {Array} scale - Array of notes in the scale.
+     * @returns {Array} Array of chords built from the scale.
+     */
+    function buildChordsFromScale(scale) {
+        const chordQualities = ['maj', 'min', 'min', 'maj', 'maj', 'min', 'dim'];
+        let chords = [];
+
+        for (let i = 0; i < scale.length; i++) {
+            let root = scale[i];
+            let quality = chordQualities[i % 7];
+            chords.push(root + (quality === 'maj' ? '' : quality));
+        }
+
+        return chords;
+    }
+
+    /**
+     * Detect secondary dominants in the progression.
+     * @param {Array} chords - Array of chords.
+     * @param {String} key - The key of the progression.
+     * @returns {Array} Array of secondary dominant chords.
+     */
+    function detectSecondaryDominants(chords, key) {
+        let secondaryDominants = [];
+
+        chords.forEach((chord, index) => {
+            const parsedChord = parseChord(normalizeChordName(chord));
+            if (parsedChord) {
+                const { root, quality } = parsedChord;
+                if (quality.includes('7')) {
+                    // Check if chord is a dominant seventh not diatonic to the key
+                    if (!isChordInKey(chord, key)) {
+                        // Assume it's a secondary dominant
+                        secondaryDominants.push({ chord, position: index });
+                    }
+                }
+            }
+        });
+
+        return secondaryDominants;
+    }
+
+    /**
+     * Detect modulations in the progression.
+     * @param {Array} chords - Array of chords.
+     * @param {String} originalKey - The initial key of the progression.
+     * @returns {Array} Array of modulations with new key and position.
+     */
+    function detectModulations(chords, originalKey) {
+        let modulations = [];
+        let currentKey = originalKey;
+
+        for (let i = 0; i < chords.length; i++) {
+            const chord = chords[i];
+            if (!isChordInKey(chord, currentKey)) {
+                // Try to find a new key where this chord is diatonic
+                const possibleKeys = findPossibleKeysForChord(chord);
+
+                if (possibleKeys.length > 0 && possibleKeys[0] !== currentKey) {
+                    // Modulation detected
+                    currentKey = possibleKeys[0];
+                    modulations.push({ newKey: currentKey, position: i });
+                }
+            }
+        }
+
+        return modulations;
+    }
+
+    /**
+     * Find possible keys where a chord is diatonic.
+     * @param {String} chord - The chord to check.
+     * @returns {Array} Array of possible keys.
+     */
+    function findPossibleKeysForChord(chord) {
+        let possibleKeys = [];
+
+        for (let scaleType in MusicTheory.keys) {
+            for (let key in MusicTheory.keys[scaleType]) {
+                const diatonicChords = MusicTheory.keys[scaleType][key].map(chord => normalizeChordName(chord));
+                const chordRoot = parseChord(normalizeChordName(chord)).root;
+
+                if (diatonicChords.some(dc => parseChord(dc).root === chordRoot)) {
+                    possibleKeys.push(key);
+                }
+            }
+        }
+
+        return possibleKeys;
+    }
+
+
+    /**
+     * Generate scales and modes for each chord based on harmonic function.
+     * @param {String} chord - The chord name.
+     * @param {String} harmonicFunction - The harmonic function of the chord.
+     * @param {String} key - The key of the progression.
+     * @returns {Object} An object containing the scale name and notes.
+     */
+    function generateScalesForChord(chord, harmonicFunction, key) {
+        const chordRoot = parseChord(chord).root;
+        let scale = [];
+        let scaleName = '';
+
+        // Determine the appropriate scale based on harmonic function
+        switch (harmonicFunction) {
+            case 'Tonic':
+                scaleName = `${chordRoot} Ionian (Major) Scale (from ${key} major)`;
+                scale = buildScale(chordRoot, MusicTheory.modes['Ionian']);
+                break;
+            case 'Subdominant':
+                scaleName = `${chordRoot} Lydian Mode (from ${key} major)`;
+                scale = buildScale(chordRoot, MusicTheory.modes['Lydian']);
+                break;
+            case 'Dominant':
+                scaleName = `${chordRoot} Mixolydian Mode (from ${key} major)`;
+                scale = buildScale(chordRoot, MusicTheory.modes['Mixolydian']);
+                break;
+            case 'Non-diatonic':
+                // Determine scale based on chord quality
+                const { scaleName: nonDiatonicScaleName, scale: nonDiatonicScale } = determineScaleForNonDiatonicChord(chord);
+                scaleName = nonDiatonicScaleName;
+                scale = nonDiatonicScale;
+                break;
+            default:
+                scaleName = `${chordRoot} Diatonic Scale (from ${key} major)`;
+                scale = buildScale(chordRoot, MusicTheory.modes['Ionian']);
+        }
+
+        return { scaleName, scale };
+    }
+
+    /**
+     * Determine the appropriate scale for a non-diatonic chord.
+     * @param {String} chord - The chord name.
+     * @returns {Array} An array of scale notes.
+     */
+    function determineScaleForNonDiatonicChord(chord) {
+        const { root, quality } = parseChord(chord);
+        let mode = 'Ionian';
+        let scaleName = '';
+
+        if (quality.includes('dim')) {
+            mode = 'Locrian';
+            scaleName = `${root} Locrian Mode`;
+        } else if (quality.includes('m')) {
+            if (quality.includes('7')) {
+                mode = 'Dorian';
+                scaleName = `${root} Dorian Mode`;
+            } else {
+                mode = 'Aeolian';
+                scaleName = `${root} Aeolian (Natural Minor) Scale`;
+            }
+        } else if (quality.includes('7')) {
+            mode = 'Mixolydian';
+            scaleName = `${root} Mixolydian Mode`;
+        } else {
+            mode = 'Ionian';
+            scaleName = `${root} Ionian (Major) Scale`;
+        }
+
+        const scale = buildScale(root, MusicTheory.modes[mode]);
+        return { scaleName, scale };
+    }
+
+    /**
+     * Generate a melodic phrase connecting two chords.
+     * @param {String} chord1 - The first chord.
+     * @param {Array} scale1 - The scale notes for the first chord.
+     * @param {String} chord2 - The second chord.
+     * @param {Array} scale2 - The scale notes for the second chord.
+     * @returns {String} A simple melodic phrase connecting the chords.
+     */
+    function generateConnectingPhrase(chord1, scale1, chord2, scale2) {
+        // Get chord tones
+        const chordTones1 = getChordTones(chord1);
+        const chordTones2 = getChordTones(chord2);
+
+        // Find common notes
+        const commonNotes = chordTones1.filter(note => chordTones2.includes(note));
+
+        let phrase = '';
+
+        if (commonNotes.length > 0) {
+            // Create phrase using common notes
+            phrase = `Use common chord tones: ${commonNotes.join(', ')}`;
+        } else {
+            // Create scalar run from chord1 to chord2
+            const connectingNotes = findConnectingNotes(scale1, scale2);
+            phrase = `Scalar run: ${connectingNotes.join(' - ')}`;
+        }
+
+        return phrase;
+    }
+
+    /**
+     * Get chord tones for a chord.
+     * @param {String} chord - The chord name.
+     * @returns {Array} An array of chord tones.
+     */
+    function getChordTones(chord) {
+        const { root, quality } = parseChord(chord);
+        const intervals = getChordIntervals(quality);
+        const scale = buildChromaticScale(root);
+
+        const chordTones = intervals.map(interval => scale[interval % 12]);
+        return chordTones;
+    }
+
+    /**
+     * Get the semitone value from a scale degree.
+     * @param {Number} degree - The scale degree (e.g., 9, 11, 13).
+     * @returns {Number|null} The semitone value or null if invalid degree.
+     */
+    function getSemitoneFromDegree(degree) {
+        switch (degree) {
+            case 2:
+            case 9:
+                return 14 % 12; // Major 2nd (9th)
+            case 4:
+            case 11:
+                return 17 % 12; // Perfect 4th (11th)
+            case 6:
+            case 13:
+                return 21 % 12; // Major 6th (13th)
+            case 5:
+                return 7; // Perfect 5th
+            case 7:
+                return 10; // Minor 7th
+            case 3:
+                return 4; // Major 3rd
+            case 1:
+                return 0; // Root
+            default:
+                return null; // Invalid degree
+        }
+    }
+
+    /**
+     * Get intervals for a chord quality.
+     * @param {String} quality - The chord quality (e.g., 'maj7', 'm7', '7', 'sus4', 'add9', etc.).
+     * @returns {Array} An array of intervals in semitones.
+     */
+    function getChordIntervals(quality) {
+        let intervals = [0]; // Root is always included
+
+        // Base triad intervals
+        let triadIntervals = [];
+
+        // Determine the base chord intervals
+        if (quality.startsWith('maj') || /^[6|7|9|11|13]/.test(quality)) {
+            triadIntervals = [4, 7]; // Major triad
+            quality = quality.replace(/^maj/, '');
+        } else if (quality.startsWith('m')) {
+            triadIntervals = [3, 7]; // Minor triad
+            quality = quality.replace(/^m/, '');
+        } else if (quality.startsWith('dim')) {
+            triadIntervals = [3, 6]; // Diminished triad
+            quality = quality.replace(/^dim/, '');
+        } else if (quality.startsWith('aug')) {
+            triadIntervals = [4, 8]; // Augmented triad
+            quality = quality.replace(/^aug/, '');
+        } else if (quality.startsWith('sus2')) {
+            triadIntervals = [2, 7]; // Suspended 2nd
+            quality = quality.replace(/^sus2/, '');
+        } else if (quality.startsWith('sus4')) {
+            triadIntervals = [5, 7]; // Suspended 4th
+            quality = quality.replace(/^sus4/, '');
+        } else {
+            // Default to major triad
+            triadIntervals = [4, 7];
+        }
+
+        intervals = intervals.concat(triadIntervals);
+
+        // Handle extensions and additions
+        const extensionRegex = /(6|7|9|11|13|add\d+|b\d+|#\d+|\/\d+)/g;
+        let match;
+        while ((match = extensionRegex.exec(quality)) !== null) {
+            const ext = match[0];
+
+            switch (ext) {
+                case '6':
+                    intervals.push(9); // Major 6th
+                    break;
+                case '7':
+                    intervals.push(10); // Minor 7th (Dominant 7th)
+                    break;
+                case 'maj7':
+                    intervals.push(11); // Major 7th
+                    break;
+                case '9':
+                    intervals.push(14); // 9th (octave + major 2nd)
+                    break;
+                case '11':
+                    intervals.push(17); // 11th (octave + perfect 4th)
+                    break;
+                case '13':
+                    intervals.push(21); // 13th (octave + major 6th)
+                    break;
+                default:
+                    // Handle add, b, #, and slash chords
+                    if (ext.startsWith('add')) {
+                        const degree = parseInt(ext.slice(3), 10);
+                        const semitone = getSemitoneFromDegree(degree);
+                        if (semitone !== null) intervals.push(semitone);
+                    } else if (ext.startsWith('b') || ext.startsWith('#')) {
+                        const accidental = ext.charAt(0);
+                        const degree = parseInt(ext.slice(1), 10);
+                        let semitone = getSemitoneFromDegree(degree);
+                        if (semitone !== null) {
+                            semitone += accidental === 'b' ? -1 : 1;
+                            if (semitone < 0) semitone += 12;
+                            intervals.push(semitone % 12);
+                        }
+                    } else if (ext.includes('/')) {
+                        // Handle slash chords (not implemented here)
+                        // You may choose to handle slash chords separately
+                    }
+                    break;
+            }
+        }
+
+        // Normalize intervals to within an octave
+        intervals = intervals.map(interval => interval % 12);
+
+        // Remove duplicate intervals and sort
+        const uniqueIntervals = Array.from(new Set(intervals)).sort((a, b) => a - b);
+
+        return uniqueIntervals;
+    }
+
+
+    /**
+     * Build chromatic scale starting from a root note.
+     * @param {String} root - The root note.
+     * @returns {Array} An array of notes in the chromatic scale.
+     */
+    function buildChromaticScale(root) {
+        const chromaticScaleSharp = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const chromaticScaleFlat = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+
+        // Decide whether to use sharps or flats
+        const useFlat = ['F', 'Bb', 'Eb', 'Ab', 'Db', 'Gb', 'Cb'];
+        const chromaticScale = useFlat.includes(root) ? chromaticScaleFlat : chromaticScaleSharp;
+
+        const startIndex = chromaticScale.indexOf(root);
+        if (startIndex === -1) return [];
+
+        let scale = [];
+        for (let i = 0; i < 12; i++) {
+            const noteIndex = (startIndex + i) % 12;
+            scale.push(chromaticScale[noteIndex]);
+        }
+
+        return scale;
+    }
+
+    /**
+     * Find connecting notes between two scales.
+     * @param {Array} scale1 - The first scale.
+     * @param {Array} scale2 - The second scale.
+     * @returns {Array} An array of notes forming a scalar run from scale1 to scale2.
+     */
+    function findConnectingNotes(scale1, scale2) {
+        // For simplicity, find notes common to both scales
+        const commonNotes = scale1.filter(note => scale2.includes(note));
+
+        if (commonNotes.length > 0) {
+            return commonNotes;
+        } else {
+            // If no common notes, create a chromatic run from the last note of scale1 to the first note of scale2
+            const note1 = scale1[scale1.length - 1];
+            const note2 = scale2[0];
+            const chromaticScale = buildChromaticScale(note1);
+            const indexNote2 = chromaticScale.indexOf(note2);
+
+            if (indexNote2 !== -1) {
+                return chromaticScale.slice(0, indexNote2 + 1);
+            } else {
+                return [note1, note2];
+            }
+        }
+    }
+
+
+
+    // Updated generateFretboardDiagram function
+    /**
+     * Generate a fretboard diagram for a given scale with highlighted notes and intervallic values.
+     * @param {Array} scale - An array of scale notes.
+     * @param {Object} options - An object containing notes to highlight.
+     * @param {String} chordRoot - The root note of the chord.
+     * @param {String} chord - The chord name.
+     * @returns {HTMLElement} A div element containing the fretboard diagram.
+     */
+    function generateFretboardDiagram(scale, options = {}, chordRoot, chord) {
+        const strings = ['E', 'B', 'G', 'D', 'A', 'E'];
+        const numFrets = 12; // Number of frets to display
+        const fretboardDiv = document.createElement('div');
+        fretboardDiv.className = 'fretboard';
+
+        // Add fret numbers at the top
+        const fretNumbersDiv = document.createElement('div');
+        fretNumbersDiv.className = 'string fret-numbers';
+
+        // Add an empty div for string label alignment
+        const emptyDiv = document.createElement('div');
+        emptyDiv.className = 'fret empty-fret';
+        fretNumbersDiv.appendChild(emptyDiv);
+
+        for (let fret = 0; fret <= numFrets; fret++) {
+            const fretNumberDiv = document.createElement('div');
+            fretNumberDiv.className = 'fret fret-number';
+            fretNumberDiv.textContent = fret;
+            fretNumbersDiv.appendChild(fretNumberDiv);
+        }
+
+        fretboardDiv.appendChild(fretNumbersDiv);
+
+        strings.forEach(string => {
+            const stringDiv = document.createElement('div');
+            stringDiv.className = 'string';
+
+            // Add string label at the start
+            const stringLabelDiv = document.createElement('div');
+            stringLabelDiv.className = 'fret string-label';
+            stringLabelDiv.textContent = string;
+            stringDiv.appendChild(stringLabelDiv);
+
+            for (let fret = 0; fret <= numFrets; fret++) {
+                const fretDiv = document.createElement('div');
+                fretDiv.className = 'fret';
+
+                // Determine the note at this fret
+                const note = getNoteAtFret(string, fret);
+
+                if (scale.includes(note)) {
+                    const noteDiv = document.createElement('div');
+                    noteDiv.className = 'note';
+
+                    // Determine intervallic value
+                    const interval = getInterval(chordRoot, note);
+                    const intervalName = getIntervalName(interval);
+                    noteDiv.textContent = intervalName;
+
+                    // Highlight target notes
+                    if (options.targetNotes && options.targetNotes.includes(note)) {
+                        noteDiv.classList.add('target-note');
+                    }
+
+                    // Highlight tension notes
+                    if (options.tensions && options.tensions.includes(note)) {
+                        noteDiv.classList.add('tension-note');
+                    }
+
+                    // Highlight avoid notes
+                    if (options.avoidNotes && options.avoidNotes.includes(note)) {
+                        noteDiv.classList.add('avoid-note');
+                    }
+
+                    // Add event listener for hover or click
+                    noteDiv.addEventListener('mouseenter', () => {
+                        showNotePopup(noteDiv, note, intervalName, chord, options);
+                    });
+                    noteDiv.addEventListener('mouseleave', () => {
+                        hideNotePopup();
+                    });
+
+                    fretDiv.appendChild(noteDiv);
+                }
+
+                stringDiv.appendChild(fretDiv);
+            }
+
+            fretboardDiv.appendChild(stringDiv);
+        });
+
+        return fretboardDiv;
+    }
+
+    // New functions for interval calculation and popup display
+
+    /**
+     * Get the interval in semitones between two notes.
+     * @param {String} root - The root note.
+     * @param {String} note - The target note.
+     * @returns {Number} The interval in semitones.
+     */
+    function getInterval(root, note) {
+        const chromaticScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+        const rootIndex = chromaticNoteIndex(root);
+        const noteIndex = chromaticNoteIndex(note);
+
+        let interval = (noteIndex - rootIndex + 12) % 12;
+        return interval;
+    }
+
+    /**
+     * Get the interval name based on the number of semitones.
+     * @param {Number} interval - The interval in semitones.
+     * @returns {String} The interval name (e.g., 'R', 'b2', '2', 'b3', etc.).
+     */
+    function getIntervalName(interval) {
+        const intervalNames = {
+            0: 'R',    // Unison
+            1: 'b2',   // Minor 2nd
+            2: '2',    // Major 2nd
+            3: 'b3',   // Minor 3rd
+            4: '3',    // Major 3rd
+            5: '4',    // Perfect 4th
+            6: 'b5',   // Tritone
+            7: '5',    // Perfect 5th
+            8: '#5',   // Augmented 5th
+            9: '6',    // Major 6th
+            10: 'b7',  // Minor 7th
+            11: '7',   // Major 7th
+        };
+        return intervalNames[interval] || '';
+    }
+
+    /**
+     * Show a popup with note information.
+     * @param {HTMLElement} noteDiv - The note div element.
+     * @param {String} note - The note name.
+     * @param {String} intervalName - The intervallic name.
+     * @param {String} chord - The chord name.
+     * @param {Object} options - Contains targetNotes, tensions, avoidNotes.
+     */
+    function showNotePopup(noteDiv, note, intervalName, chord, options) {
+        // Create popup div
+        const popup = document.createElement('div');
+        popup.className = 'note-popup';
+
+        // Determine function of the note
+        let functionName = '';
+        if (options.targetNotes && options.targetNotes.includes(note)) {
+            functionName = 'Target Note';
+        } else if (options.tensions && options.tensions.includes(note)) {
+            functionName = 'Tension Note';
+        } else if (options.avoidNotes && options.avoidNotes.includes(note)) {
+            functionName = 'Avoid Note';
+        } else {
+            functionName = 'Scale Note';
+        }
+
+        // Set popup content
+        popup.innerHTML = `
+    <strong>Note:</strong> ${note}<br>
+    <strong>Interval:</strong> ${intervalName}<br>
+    <strong>Function:</strong> ${functionName}<br>
+    <strong>Chord:</strong> ${chord}
+  `;
+
+        // Position the popup
+        document.body.appendChild(popup);
+        const rect = noteDiv.getBoundingClientRect();
+        popup.style.left = `${rect.left + window.scrollX}px`;
+        popup.style.top = `${rect.top + window.scrollY - popup.offsetHeight - 5}px`;
+
+        // Store reference to popup for hiding
+        noteDiv._popup = popup;
+    }
+
+    /**
+     * Hide the note popup.
+     */
+    function hideNotePopup() {
+        // Remove all popups
+        const popups = document.querySelectorAll('.note-popup');
+        popups.forEach(popup => popup.remove());
+    }
+
+    /**
+     * Display the analysis and scales on the webpage.
+     * @param {Object} analysis - The analysis object returned from analyzeChordProgression.
+     */
+    /**
+     * Display the analysis of the chord progression on the webpage.
+     * @param {Object} analysis - The analysis object returned from analyzeChordProgression.
+     */
+    function displayAnalysis(analysis) {
+        const outputDiv = document.getElementById('analysisOutput');
+        outputDiv.innerHTML = ''; // Clear previous output
+
+        // Display key
+        const keyHeader = document.createElement('h2');
+        keyHeader.className = 'text-2xl font-bold mb-4';
+        keyHeader.textContent = `Key: ${analysis.key}`;
+        outputDiv.appendChild(keyHeader);
+
+        let previousChord = null;
+        let previousScale = null;
+
+        // Iterate over each chord and display scales and fretboard diagrams
+        analysis.chord_labels.forEach((label, index) => {
+            const chord = analysis.chords[index];
+            const harmonicFunction = analysis.harmonic_functions[index];
+
+            // Generate scales
+            const { scaleName, scale } = generateScalesForChord(chord, harmonicFunction, analysis.key);
+
+            // Get target notes, tensions, avoid notes, guide tones
+            const targetNotes = getTargetNotes(chord);
+            const tensions = getAvailableTensions(chord, scale);
+            const avoidNotes = getAvoidNotes(chord, scale);
+            const guideTones = getGuideTones(chord);
+
+            // Get chord root
+            const chordRoot = parseChord(chord).root;
+
+            // Create chord section
+            const chordSection = document.createElement('div');
+            chordSection.className = 'mb-6 p-4 bg-white rounded-md shadow';
+
+            const chordTitle = document.createElement('h3');
+            chordTitle.className = 'text-xl font-semibold mb-2';
+            chordTitle.textContent = `Chord: ${chord} (${harmonicFunction})`;
+            chordSection.appendChild(chordTitle);
+
+            const scaleInfo = document.createElement('p');
+            scaleInfo.className = 'mb-2';
+            scaleInfo.textContent = `Scale: ${scaleName}`;
+            chordSection.appendChild(scaleInfo);
+
+            const scaleNotes = document.createElement('p');
+            scaleNotes.className = 'mb-2';
+            scaleNotes.textContent = `Notes: ${scale.join(', ')}`;
+            chordSection.appendChild(scaleNotes);
+
+            const guideTonesInfo = document.createElement('p');
+            guideTonesInfo.className = 'mb-2';
+            guideTonesInfo.textContent = `Guide Tones (3rd, 7th): ${guideTones.join(', ')}`;
+            chordSection.appendChild(guideTonesInfo);
+
+            // Additional suggestions if there is a previous chord
+            if (previousChord) {
+                // Common Tones
+                const commonTones = getCommonTones(previousChord, chord);
+                const commonTonesInfo = document.createElement('p');
+                commonTonesInfo.className = 'mb-2';
+                commonTonesInfo.textContent = `Common Tones with previous chord: ${commonTones.join(', ')}`;
+                chordSection.appendChild(commonTonesInfo);
+
+                // Stepwise Motion
+                const stepwiseMotion = getStepwiseMotion(previousChord, chord);
+                const stepwiseMotionInfo = document.createElement('p');
+                stepwiseMotionInfo.className = 'mb-2';
+                stepwiseMotionInfo.textContent = `Stepwise Motion Suggestions: ${stepwiseMotion.join(', ')}`;
+                chordSection.appendChild(stepwiseMotionInfo);
+
+                // Approach Tones
+                const approachTones = getApproachTones(previousChord, chord);
+                const approachTonesInfo = document.createElement('p');
+                approachTonesInfo.className = 'mb-2';
+                approachTonesInfo.textContent = `Approach Tones into next chord: ${approachTones.join('; ')}`;
+                chordSection.appendChild(approachTonesInfo);
+
+                // Generate connecting phrase
+                const phrase = generateConnectingPhrase(previousChord, previousScale.scale, chord, scale);
+                const phraseInfo = document.createElement('p');
+                phraseInfo.className = 'mt-4 italic';
+                phraseInfo.textContent = `Connecting Phrase from ${previousChord} to ${chord}: ${phrase}`;
+                chordSection.appendChild(phraseInfo);
+            }
+
+            // Generate fretboard diagram with highlights
+            const fretboardDiv = generateFretboardDiagram(
+                scale,
+                {
+                    targetNotes: targetNotes,
+                    tensions: tensions,
+                    avoidNotes: avoidNotes,
+                },
+                chordRoot,
+                chord
+            );
+            chordSection.appendChild(fretboardDiv);
+
+            // Add legend for note colors
+            const legendDiv = document.createElement('div');
+            legendDiv.className = 'flex mt-4';
+
+            const legendItems = [
+                { className: 'note target-note', label: 'Target Note' },
+                { className: 'note tension-note', label: 'Tension Note' },
+                { className: 'note avoid-note', label: 'Avoid Note' },
+            ];
+
+            legendItems.forEach(item => {
+                const legendItemDiv = document.createElement('div');
+                legendItemDiv.className = 'flex items-center mr-4';
+
+                const legendColorDiv = document.createElement('div');
+                legendColorDiv.className = item.className + ' w-4 h-4 mr-2';
+                legendItemDiv.appendChild(legendColorDiv);
+
+                const legendLabel = document.createElement('span');
+                legendLabel.textContent = item.label;
+                legendItemDiv.appendChild(legendLabel);
+
+                legendDiv.appendChild(legendItemDiv);
+            });
+
+            chordSection.appendChild(legendDiv);
+
+            // Step 6: Bebop Scales and Chord Substitutions
+            if (chord.includes('7')) {
+                // Generate Bebop Scale
+                const { scaleName: bebopScaleName, scale: bebopScale } = generateBebopScale(chord);
+
+                const bebopScaleInfo = document.createElement('p');
+                bebopScaleInfo.className = 'mt-4 mb-2 font-semibold';
+                bebopScaleInfo.textContent = `Bebop Scale: ${bebopScaleName}`;
+                chordSection.appendChild(bebopScaleInfo);
+
+                const bebopScaleNotes = document.createElement('p');
+                bebopScaleNotes.className = 'mb-4';
+                bebopScaleNotes.textContent = `Notes: ${bebopScale.join(', ')}`;
+                chordSection.appendChild(bebopScaleNotes);
+
+                // Generate fretboard diagram for Bebop Scale
+                const bebopFretboardDiv = generateFretboardDiagram(bebopScale, {}, chordRoot, chord);
+                chordSection.appendChild(bebopFretboardDiv);
+            }
+
+            // Suggest Chord Substitutions
+            const substitutions = suggestChordSubstitutions(chord);
+            if (substitutions.length > 0) {
+                const substitutionsInfo = document.createElement('p');
+                substitutionsInfo.className = 'mt-4 mb-2 font-semibold';
+                substitutionsInfo.textContent = `Suggested Chord Substitutions: ${substitutions.join(', ')}`;
+                chordSection.appendChild(substitutionsInfo);
+            }
+
+            outputDiv.appendChild(chordSection);
+
+            // Update previous chord and scale
+            previousChord = chord;
+            previousScale = { scaleName, scale };
+        });
+    }
+
+    /**
+     * Get the note at a specific fret on a given string.
+     * @param {String} openString - The open string note (e.g., 'E', 'A').
+     * @param {Number} fret - The fret number.
+     * @returns {String} The note at the specified fret.
+     */
+    function getNoteAtFret(openString, fret) {
+        const chromaticScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const openNoteIndex = chromaticScale.indexOf(openString);
+        const noteIndex = (openNoteIndex + fret) % 12;
+        return chromaticScale[noteIndex];
+    }
+
+    // Modify analyzeChordProgression to include chords in the analysis object
+    function analyzeChordProgression(chords) {
+        // Normalize chords
+        chords = chords.map(chord => normalizeChordName(chord));
+
+        // Step 1: Determine the key
+        const key = determineKey(chords);
+
+        // Step 2: Label chords
+        const chordLabels = labelChords(chords, key);
+
+        // Step 3: Identify harmonic functions
+        const harmonicFunctions = identifyHarmonicFunctions(chordLabels, key);
+
+        // Step 4: Detect modal interchange
+        const modalInterchange = detectModalInterchange(chords, key);
+
+        // Step 5: Detect secondary dominants
+        const secondaryDominants = detectSecondaryDominants(chords, key);
+
+        // Step 6: Detect modulations
+        const modulations = detectModulations(chords, key);
+
+        return {
+            key: key,
+            chords: chords,
+            modal_interchange: modalInterchange,
+            chord_labels: chordLabels,
+            harmonic_functions: harmonicFunctions,
+            secondary_dominants: secondaryDominants,
+            modulations: modulations
+        };
+    }
+
+    /**
+     * Get common tones between two chords.
+     * @param {String} chord1 - The first chord.
+     * @param {String} chord2 - The second chord.
+     * @returns {Array} An array of common chord tones.
+     */
+    function getCommonTones(chord1, chord2) {
+        const chordTones1 = getChordTones(chord1);
+        const chordTones2 = getChordTones(chord2);
+        return chordTones1.filter(note => chordTones2.includes(note));
+    }
+
+    /**
+     * Get stepwise motion suggestions between two chords.
+     * @param {String} chord1 - The first chord.
+     * @param {String} chord2 - The second chord.
+     * @returns {Array} An array of stepwise motion suggestions.
+     */
+    function getStepwiseMotion(chord1, chord2) {
+        const chordTones1 = getChordTones(chord1);
+        const chordTones2 = getChordTones(chord2);
+        const suggestions = [];
+
+        chordTones1.forEach(note1 => {
+            chordTones2.forEach(note2 => {
+                const interval = Math.abs(getIntervalSemitones(note1, note2));
+                if (interval === 1 || interval === 2) {
+                    suggestions.push(`${note1} to ${note2}`);
+                }
+            });
+        });
+
+        return suggestions;
+    }
+
+    /**
+     * Get approach tones into the next chord's tones.
+     * @param {String} chord1 - The first chord.
+     * @param {String} chord2 - The next chord.
+     * @returns {Array} An array of approach tones.
+     */
+    function getApproachTones(chord1, chord2) {
+        const chordTones2 = getChordTones(chord2);
+        const approachTones = [];
+
+        chordTones2.forEach(note => {
+            // Approach tones are a half-step below or above the target note
+            const chromaticScale = buildChromaticScale(note);
+            const noteIndex = chromaticNoteIndex(note);
+
+            const lowerApproachIndex = (noteIndex - 1 + 12) % 12;
+            const upperApproachIndex = (noteIndex + 1) % 12;
+
+            const lowerApproach = chromaticScale[lowerApproachIndex];
+            const upperApproach = chromaticScale[upperApproachIndex];
+
+            approachTones.push(`Approach ${note} from ${lowerApproach} or ${upperApproach}`);
+        });
+
+        return approachTones;
+    }
+
+    /**
+     * Get guide tones (3rd and 7th degrees) for a chord.
+     * @param {String} chord - The chord name.
+     * @returns {Array} An array of guide tones.
+     */
+    function getGuideTones(chord) {
+        const { root, quality } = parseChord(chord);
+        const intervals = getChordIntervals(quality);
+        const scale = buildChromaticScale(root);
+
+        const guideIntervals = [];
+
+        if (intervals.includes(3) || intervals.includes(4)) {
+            // 3rd degree
+            guideIntervals.push(intervals.includes(3) ? 3 : 4);
+        }
+        if (intervals.includes(10) || intervals.includes(11)) {
+            // 7th degree
+            guideIntervals.push(intervals.includes(10) ? 10 : 11);
+        }
+
+        const guideTones = guideIntervals.map(interval => scale[interval % 12]);
+        return guideTones;
+    }
+
+    /**
+     * Get the interval in semitones between two notes.
+     * @param {String} note1 - The first note.
+     * @param {String} note2 - The second note.
+     * @returns {Number} The interval in semitones.
+     */
+    function getIntervalSemitones(note1, note2) {
+        const index1 = chromaticNoteIndex(note1);
+        const index2 = chromaticNoteIndex(note2);
+        return (index2 - index1 + 12) % 12;
+    }
+
+    /**
+     * Generate the Bebop scale for a given chord.
+     * @param {String} chord - The chord name.
+     * @returns {Object} An object containing the bebop scale name and notes.
+     */
+    function generateBebopScale(chord) {
+        const { root, quality } = parseChord(chord);
+        let scale = [];
+        let scaleName = '';
+
+        if (quality.includes('7')) {
+            // Dominant Bebop Scale
+            scaleName = `${root} Bebop Dominant Scale`;
+            const intervals = [0, 2, 4, 5, 7, 9, 10, 11]; // Bebop Dominant intervals
+            scale = intervals.map(interval => buildChromaticScale(root)[interval % 12]);
+        } else if (quality.includes('maj7')) {
+            // Major Bebop Scale
+            scaleName = `${root} Bebop Major Scale`;
+            const intervals = [0, 2, 4, 5, 7, 8, 9, 11]; // Bebop Major intervals
+            scale = intervals.map(interval => buildChromaticScale(root)[interval % 12]);
+        }
+
+        return { scaleName, scale };
+    }
+
+    /**
+     * Suggest chord substitutions for a given chord.
+     * @param {String} chord - The chord name.
+     * @returns {Array} An array of suggested chord substitutions.
+     */
+    function suggestChordSubstitutions(chord) {
+        const { root, quality } = parseChord(chord);
+        const substitutions = [];
+
+        if (quality.includes('7')) {
+            // Tritone substitution
+            const tritoneIndex = (chromaticNoteIndex(root) + 6) % 12;
+            const tritoneNote = chromaticScaleSharp[tritoneIndex];
+            substitutions.push(`${tritoneNote}7 (Tritone Substitution)`);
+        }
+
+        // Other substitutions can be added here
+
+        return substitutions;
+    }
+
+
+
+</script>
+</body>
+</html>
